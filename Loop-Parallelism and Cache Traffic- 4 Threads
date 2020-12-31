@@ -1,0 +1,75 @@
+/*On Simics compile with "gcc thread.c -pthread"  
+on CygWin, -pthread option is not required */
+
+#include <pthread.h>
+#include <stdio.h>
+
+
+
+#define NUMBER_OF_ROWS 128 //2^7
+
+#define NUMBER_OF_COLS 100000
+#define NUMBER_OF_ADDITIONAL_THREADS 3
+
+
+
+//shared arrays named "array" and "sum",  variable "count", and lock location named "lock_var"
+int array[NUMBER_OF_ROWS][NUMBER_OF_COLS];
+float sum[NUMBER_OF_ROWS];
+
+int count = 0;  //define a shared count, initialized to zero
+pthread_mutex_t lock_var;  //define a shared lock variable (a system level variable)
+
+int FetchAndIncrement()
+{
+	int t;
+	pthread_mutex_lock(&lock_var);	//lock
+		t = count;
+		count = count + 1;
+	pthread_mutex_unlock(&lock_var); //unlock
+	return(t);
+}
+void *FindRowSum(void *arg)
+{
+	int *pid = (int *) arg;
+	int index, j;
+	
+
+	index = FetchAndIncrement();
+	
+	while(index < NUMBER_OF_ROWS) {
+		for (j=0; j< NUMBER_OF_COLS; j++)
+		array[index][j] = index; //assume array data are read here
+
+		sum[index] = 0; //start computations (assume a complex one)
+		for (j=0; j<NUMBER_OF_COLS; j++)
+		{
+			sum[index] = sum[index] + array[index][j];
+		}
+		printf("pid = %d Sum[%d] = %f\n", *pid, index, sum[index]);
+		index = FetchAndIncrement();
+	}
+	
+
+	return NULL;
+}
+int main (void)
+{
+	pthread_t threadID[NUMBER_OF_ADDITIONAL_THREADS];
+	void *exit_status;
+	int i, pid[4];
+	
+	
+	for(i=0; i<NUMBER_OF_ADDITIONAL_THREADS; i++) { //create 3 aditional threads to run
+		pid[i] = i;
+		pthread_create(&threadID[i], NULL, FindRowSum, &pid[i]);  //&i would also work but print pid info above will be incorrect
+	}
+	
+	pid[3] = 3;
+	FindRowSum(&pid[3]); //main is the 4th thread
+
+	for(i=0; i<NUMBER_OF_ADDITIONAL_THREADS; i++)
+		pthread_join(threadID[i], &exit_status);
+
+	return 0;
+}
